@@ -188,13 +188,13 @@
       "password_hash": "$2a$10$DlR6xvpXqVMdwyDGomiKzu7WH7/9ZOt9niexFEZP0yYUVyDULl4OW",
       "full_name": "suresh rajput",
       "role": "student",
-      "about": "",
-      "avatar_url": null,
+      "about": "at iit bombay",
+      "avatar_url": "/uploads/avatars/1777222280774-396936836.jpg",
       "points": 10,
       "warnings": 0,
       "is_banned": 0,
       "created_at": "2026-04-25T07:23:09.348Z",
-      "updated_at": "2026-04-25T07:23:09.348Z"
+      "updated_at": "2026-04-26T16:51:41.650Z"
     },
     {
       "id": "a05549ab-5e4e-4757-ae33-9e37e10e348e",
@@ -209,6 +209,20 @@
       "is_banned": 0,
       "created_at": "2026-04-25T17:24:33.273Z",
       "updated_at": "2026-04-25T17:24:33.273Z"
+    },
+    {
+      "id": "2e72f99e-671d-4159-861e-3be1a434f39b",
+      "email": "aryannyadav09@gmail.com",
+      "password_hash": "$2a$10$jM/Ib0LLPgb7FyC5oUqUpOEUPZF6Ix0NgGh2s6jkrnXftnGGYQoJW",
+      "full_name": "aryan yadav",
+      "role": "student",
+      "about": "",
+      "avatar_url": null,
+      "points": 0,
+      "warnings": 0,
+      "is_banned": 0,
+      "created_at": "2026-04-26T16:35:44.001Z",
+      "updated_at": "2026-04-26T16:35:44.001Z"
     }
   ],
   "faculty_codes": [
@@ -291,6 +305,16 @@
       "file_name": "os notes 1.pdf",
       "file_type": "application/pdf",
       "created_at": "2026-04-26T09:56:31.577Z"
+    },
+    {
+      "id": "34ba0244-236c-4536-bd63-8ee252d4611f",
+      "group_id": "95b9f5ee-d354-4345-8585-501356da8e73",
+      "sender_id": "8650e057-b3d7-490f-a5b6-846188cf58d1",
+      "content": "thank you",
+      "file_url": null,
+      "file_name": null,
+      "file_type": null,
+      "created_at": "2026-04-26T16:40:22.446Z"
     }
   ],
   "notes": [
@@ -366,7 +390,7 @@
       "file_size": 256909,
       "is_flagged": 0,
       "is_approved": 1,
-      "downloads": 3,
+      "downloads": 4,
       "created_at": "2026-04-25T18:23:16.541Z"
     },
     {
