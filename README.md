@@ -1,13 +1,3 @@
-Checking the repository for any Supabase references before I give you the final README.
-
-Searched for text `supabase`, 50 results
-
-I found Supabase setup files and dependencies, so I’m checking the exact integration before finalizing the README text.
-
-Read [](file:///c%3A/Users/indos/OneDrive/Desktop/scholargrid/package.json)
-
-Read [](file:///c%3A/Users/indos/OneDrive/Desktop/scholargrid/src/lib/supabaseClient.js)
-
 # 🎓 ScholarGrid
 
 **ScholarGrid** is a premium college collaboration platform where students can share academic notes, communicate in real-time group chats, track their contributions on a leaderboard, and submit feedback — all within a beautifully designed, gamified interface.
