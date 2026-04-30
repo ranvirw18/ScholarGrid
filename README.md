@@ -99,7 +99,7 @@ scholargridddd/
 
 ```bash
 # 1. Clone the repository
-git clone <your-repo-url>
+git clone https://github.com/ranvirw18/ScholarGrid.git
 cd scholargridddd
 
 # 2. Install frontend dependencies
