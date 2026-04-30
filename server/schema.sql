@@ -154,19 +154,19 @@ DELIMITER ;
 
 -- Superadmin user (password: admin123)
 INSERT INTO profiles (id, email, password_hash, full_name, role, about, points) VALUES
-('a0000000-0000-0000-0000-000000000001', 'admin@scholargrid.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Super Admin User', 'superadmin', 'Platform administrator', 0);
+('a0000000-0000-0000-0000-000000000001', 'admin@scholargrid.com', '$2a$10$AzYeWD1rs8oHqjXB/rjnNuhIJlhTnfRdP48hv9FpmoOAN3m/dZ3Wq', 'Super Admin User', 'superadmin', 'Platform administrator', 0);
 
 -- Faculty user (password: faculty123)
 INSERT INTO profiles (id, email, password_hash, full_name, role, about, points) VALUES
-('f0000000-0000-0000-0000-000000000001', 'faculty@scholargrid.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Faculty User', 'faculty', 'Computer Science Professor', 0);
+('f0000000-0000-0000-0000-000000000001', 'faculty@scholargrid.com', '$2a$10$P/G3U1T2c.MJCB/rNo2mQedRSWXoOqSWYcYBOWn9/hZBTLKbP6IdW', 'Faculty User', 'faculty', 'Computer Science Professor', 0);
 
 -- Student users (password: student123)
 INSERT INTO profiles (id, email, password_hash, full_name, role, about, points) VALUES
-('s0000000-0000-0000-0000-000000000001', 'alice@student.com', '$2a$10$YvJFDdMqEqyUrJdGsK3jAOmXtQkVxJbG6vLHZwYlKWqOsGiIq5c9a', 'Alice Johnson', 'student', 'Computer Science major', 150),
-('s0000000-0000-0000-0000-000000000002', 'bob@student.com', '$2a$10$YvJFDdMqEqyUrJdGsK3jAOmXtQkVxJbG6vLHZwYlKWqOsGiIq5c9a', 'Bob Smith', 'student', 'Mathematics enthusiast', 230),
-('s0000000-0000-0000-0000-000000000003', 'carol@student.com', '$2a$10$YvJFDdMqEqyUrJdGsK3jAOmXtQkVxJbG6vLHZwYlKWqOsGiIq5c9a', 'Carol Williams', 'student', 'Physics student', 310),
-('s0000000-0000-0000-0000-000000000004', 'dave@student.com', '$2a$10$YvJFDdMqEqyUrJdGsK3jAOmXtQkVxJbG6vLHZwYlKWqOsGiIq5c9a', 'Dave Brown', 'student', 'Engineering student', 80),
-('s0000000-0000-0000-0000-000000000005', 'eve@student.com', '$2a$10$YvJFDdMqEqyUrJdGsK3jAOmXtQkVxJbG6vLHZwYlKWqOsGiIq5c9a', 'Eve Davis', 'student', 'Biology researcher', 420);
+('s0000000-0000-0000-0000-000000000001', 'alice@student.com', '$2a$10$fqiqZVWRgD9dYUviOYdgEOFkKk7/2vH71ncObJOIUTuv/ZYGD0Rrm', 'Alice Johnson', 'student', 'Computer Science major', 150),
+('s0000000-0000-0000-0000-000000000002', 'bob@student.com', '$2a$10$fqiqZVWRgD9dYUviOYdgEOFkKk7/2vH71ncObJOIUTuv/ZYGD0Rrm', 'Bob Smith', 'student', 'Mathematics enthusiast', 230),
+('s0000000-0000-0000-0000-000000000003', 'carol@student.com', '$2a$10$fqiqZVWRgD9dYUviOYdgEOFkKk7/2vH71ncObJOIUTuv/ZYGD0Rrm', 'Carol Williams', 'student', 'Physics student', 310),
+('s0000000-0000-0000-0000-000000000004', 'dave@student.com', '$2a$10$fqiqZVWRgD9dYUviOYdgEOFkKk7/2vH71ncObJOIUTuv/ZYGD0Rrm', 'Dave Brown', 'student', 'Engineering student', 80),
+('s0000000-0000-0000-0000-000000000005', 'eve@student.com', '$2a$10$fqiqZVWRgD9dYUviOYdgEOFkKk7/2vH71ncObJOIUTuv/ZYGD0Rrm', 'Eve Davis', 'student', 'Biology researcher', 420);
 
 -- Groups
 INSERT INTO `groups` (id, name, description, join_code, created_by) VALUES

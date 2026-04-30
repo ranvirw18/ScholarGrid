@@ -5,11 +5,13 @@ const jwt = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
 
 const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || '';
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY || '';
 
 function createAuthClient() {
-  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null;
-  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const authKey = SUPABASE_SERVICE_KEY || SUPABASE_ANON_KEY;
+  if (!SUPABASE_URL || !authKey) return null;
+  return createClient(SUPABASE_URL, authKey, {
     auth: {
       persistSession: false,
       autoRefreshToken: false,
@@ -160,12 +162,30 @@ router.post('/login', async (req, res) => {
     }
 
     if (signIn.error || !signIn.data?.user?.id) {
+      console.warn('Login failed for', normalizedEmail, signIn.error?.message || signIn.error);
+      if (/invalid api key|apikey/i.test(signIn.error?.message || '')) {
+        return res.status(500).json({ error: 'Supabase auth key is invalid on server' });
+      }
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const profile = await db.getProfileById(signIn.data.user.id);
+    const authUser = signIn.data.user;
+    let profile = await db.getProfileById(authUser.id);
     if (!profile) {
-      return res.status(401).json({ error: 'Invalid email or password' });
+      const metadata = authUser.user_metadata || {};
+      profile = await db.createProfile({
+        id: authUser.id,
+        email: authUser.email || normalizedEmail,
+        full_name: metadata.full_name || '',
+        role: metadata.role || 'student',
+        about: '',
+        avatar_url: null,
+        points: 0,
+        warnings: 0,
+        is_banned: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
     }
 
     if (profile.is_banned) {

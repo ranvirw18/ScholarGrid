@@ -118,7 +118,7 @@ This starts both servers concurrently:
 | Role | Email | Password |
 |---|---|---|
 | Super Admin | `superadmin@gmail.com` | `superadmin123` |
-| Student (test) | `student@test.com` | `student123` |
+| Student (test) | `peterparker@marvel.in` | `123456` |
 
 ### Faculty Upgrade Code
 Students can upgrade to faculty from their Profile page using the registration code:
