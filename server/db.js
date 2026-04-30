@@ -1,126 +1,481 @@
-/**
- * Pure JavaScript in-memory database with JSON file persistence.
- * No native compilation needed — works on any system.
- */
-const fs = require('fs');
 const path = require('path');
-const bcrypt = require('bcryptjs');
-const { v4: uuidv4 } = require('uuid');
+const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-const DB_FILE = path.join(__dirname, 'data.json');
+const SUPABASE_URL = process.env.SUPABASE_URL || '';
+const SUPABASE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_ANON_KEY || '';
 
-// In-memory store
-let store = {
-  profiles: [],
-  faculty_codes: [],
-  groups: [],
-  group_members: [],
-  messages: [],
-  notes: [],
-  note_ratings: [],
-  leaderboard_points: [],
-  complaints: [],
-};
+if (!SUPABASE_URL || !SUPABASE_KEY) {
+  throw new Error('Missing Supabase credentials in server/.env');
+}
 
-// ── Load / Save ────────────────────────────────────────────
-function loadFromDisk() {
-  try {
-    if (fs.existsSync(DB_FILE)) {
-      const raw = fs.readFileSync(DB_FILE, 'utf-8');
-      const parsed = JSON.parse(raw);
-      Object.assign(store, parsed);
-      console.log('💾 Loaded database from data.json');
-      return true;
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
+  auth: { persistSession: false },
+});
+
+function throwDbError(error, fallback = 'Database error') {
+  if (error) {
+    const message = error.message || error.details || JSON.stringify(error);
+    const err = new Error(message || fallback);
+    err.status = 500;
+    throw err;
+  }
+}
+
+async function getProfiles() {
+  const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+  throwDbError(error);
+  return data || [];
+}
+
+async function getStudents() {
+  const { data, error } = await supabase.from('profiles').select('*').eq('role', 'student').order('created_at', { ascending: false });
+  throwDbError(error);
+  return data || [];
+}
+
+async function getProfileById(id) {
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', id).single();
+  if (error && error.code !== 'PGRST116') throwDbError(error);
+  return data || null;
+}
+
+async function getProfileByEmail(email) {
+  const { data, error } = await supabase.from('profiles').select('*').ilike('email', email).single();
+  if (error && error.code !== 'PGRST116') throwDbError(error);
+  return data || null;
+}
+
+async function getProfilesByIds(ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  const { data, error } = await supabase.from('profiles').select('*').in('id', ids);
+  throwDbError(error);
+  return data || [];
+}
+
+async function createProfile(profile) {
+  const { data, error } = await supabase.from('profiles').insert([profile]).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function deleteProfileById(id) {
+  const { data, error } = await supabase.from('profiles').delete().eq('id', id).select().single();
+  throwDbError(error);
+  return data || null;
+}
+
+async function updateProfile(id, attributes) {
+  const { data, error } = await supabase.from('profiles').update(attributes).eq('id', id).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function incrementWarnings(id) {
+  const profile = await getProfileById(id);
+  if (!profile) return null;
+  return updateProfile(id, { warnings: (profile.warnings || 0) + 1 });
+}
+
+async function toggleBan(id, isBanned) {
+  return updateProfile(id, { is_banned: isBanned ? true : false });
+}
+
+async function updateRole(id, role) {
+  return updateProfile(id, { role });
+}
+
+async function updateAvatar(id, avatarUrl) {
+  return updateProfile(id, { avatar_url: avatarUrl });
+}
+
+async function getFacultyCodes() {
+  const { data, error } = await supabase.from('faculty_codes').select('*').order('created_at', { ascending: false });
+  throwDbError(error);
+  return data || [];
+}
+
+async function createFacultyCode(createdBy, code) {
+  const entry = {
+    code,
+    created_by: createdBy,
+    is_used: false,
+    created_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('faculty_codes').insert([entry]).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function deleteFacultyCode(id) {
+  const { error } = await supabase.from('faculty_codes').delete().eq('id', id);
+  throwDbError(error);
+  return true;
+}
+
+async function redeemFacultyCode(code, userId) {
+  const { data: codeEntry, error: selectError } = await supabase.from('faculty_codes').select('*').eq('code', code).eq('is_used', false).single();
+  if (selectError) {
+    if (selectError.code === 'PGRST116') return null;
+    throwDbError(selectError);
+  }
+
+  await supabase.from('faculty_codes').update({ is_used: true, used_by: userId }).eq('id', codeEntry.id);
+  await updateRole(userId, 'faculty');
+  return codeEntry;
+}
+
+async function getNotes(filters = {}) {
+  const { subject, search, sortBy, limit } = filters;
+  let query = supabase.from('notes').select('*');
+
+  if (subject && subject !== 'All') query = query.eq('subject', subject);
+  if (search) {
+    const normalized = search.trim();
+    query = query.or(`title.ilike.%${normalized}%,description.ilike.%${normalized}%`);
+  }
+
+  if (sortBy === 'downloads') query = query.order('downloads', { ascending: false });
+  else query = query.order('created_at', { ascending: false });
+  if (limit) query = query.limit(limit);
+
+  const { data, error } = await query;
+  throwDbError(error);
+  return data || [];
+}
+
+async function getNotesByUploaderId(uploaderId) {
+  const { data, error } = await supabase.from('notes').select('*').eq('uploader_id', uploaderId).order('created_at', { ascending: false });
+  throwDbError(error);
+  return data || [];
+}
+
+async function getNoteById(noteId) {
+  const { data, error } = await supabase.from('notes').select('*').eq('id', noteId).single();
+  if (error && error.code !== 'PGRST116') throwDbError(error);
+  return data || null;
+}
+
+async function createNote(note) {
+  const { data, error } = await supabase.from('notes').insert([note]).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function deleteNoteById(noteId) {
+  const { data, error } = await supabase.from('notes').delete().eq('id', noteId).select().single();
+  throwDbError(error);
+  return data || null;
+}
+
+async function updateNoteById(noteId, attributes) {
+  const { data, error } = await supabase.from('notes').update(attributes).eq('id', noteId).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function getNoteRatingsByNoteIds(noteIds) {
+  if (!Array.isArray(noteIds) || noteIds.length === 0) return [];
+  const { data, error } = await supabase.from('note_ratings').select('*').in('note_id', noteIds);
+  throwDbError(error);
+  return data || [];
+}
+
+async function upsertNoteRating(noteId, userId, rating, review) {
+  const entry = {
+    note_id: noteId,
+    user_id: userId,
+    rating,
+    review: review || null,
+    created_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('note_ratings').upsert(entry, { onConflict: 'note_id,user_id' }).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function incrementNoteDownload(noteId, downloaderId) {
+  const note = await getNoteById(noteId);
+  if (!note) return null;
+
+  const downloads = (note.downloads || 0) + 1;
+  await updateNoteById(noteId, { downloads });
+
+  if (note.uploader_id !== downloaderId) {
+    const uploader = await getProfileById(note.uploader_id);
+    if (uploader) {
+      await updateProfile(note.uploader_id, { points: (uploader.points || 0) + 2 });
+      const { error } = await supabase.from('leaderboard_points').insert([{ user_id: note.uploader_id, points: 2, reason: 'note_download', reference_id: note.id, created_at: new Date().toISOString() }]);
+      throwDbError(error);
     }
-  } catch (e) {
-    console.error('Failed to load data.json, starting fresh:', e.message);
   }
-  return false;
+
+  return note;
 }
 
-function saveToDisk() {
-  try {
-    fs.writeFileSync(DB_FILE, JSON.stringify(store, null, 2), 'utf-8');
-  } catch (e) {
-    console.error('Failed to save data.json:', e.message);
+async function getDistinctNoteSubjects() {
+  const { data, error } = await supabase.from('notes').select('subject');
+  throwDbError(error);
+  return Array.from(new Set((data || []).map((row) => row.subject).filter(Boolean))).sort();
+}
+
+async function getMessagesByGroup(groupId, limit = 100) {
+  let query = supabase.from('messages').select('*').eq('group_id', groupId).order('created_at', { ascending: true });
+  if (limit) query = query.limit(limit);
+  const { data, error } = await query;
+  throwDbError(error);
+  return data || [];
+}
+
+async function createMessage(groupId, senderId, payload) {
+  const message = {
+    group_id: groupId,
+    sender_id: senderId,
+    content: payload.content || null,
+    file_url: payload.file_url || null,
+    file_name: payload.file_name || null,
+    file_type: payload.file_type || null,
+    created_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('messages').insert([message]).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function deleteMessageById(messageId) {
+  const { data, error } = await supabase.from('messages').delete().eq('id', messageId).select().single();
+  throwDbError(error);
+  return data || null;
+}
+
+async function getGroupsForUser(user) {
+  if (['superadmin', 'faculty'].includes(user.role)) {
+    const { data, error } = await supabase.from('groups').select('*').order('created_at', { ascending: false });
+    throwDbError(error);
+    return data || [];
   }
+
+  const { data: membership, error: membershipError } = await supabase.from('group_members').select('group_id').eq('user_id', user.id);
+  throwDbError(membershipError);
+
+  const groupIds = (membership || []).map((row) => row.group_id);
+  if (groupIds.length === 0) return [];
+
+  const { data, error } = await supabase.from('groups').select('*').in('id', groupIds).order('created_at', { ascending: false });
+  throwDbError(error);
+  return data || [];
 }
 
-// Auto-save every 10 seconds
-setInterval(saveToDisk, 10000);
+async function createGroup(name, description, createdBy, joinCode) {
+  const group = {
+    name,
+    description: description || '',
+    join_code: joinCode,
+    created_by: createdBy,
+    created_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('groups').insert([group]).select().single();
+  throwDbError(error);
 
-// ── Seed Data ──────────────────────────────────────────────
-function seed() {
-  console.log('📦 Seeding database with initial data...');
-
-  const adminHash = bcrypt.hashSync('admin123', 10);
-  const facultyHash = bcrypt.hashSync('faculty123', 10);
-  const studentHash = bcrypt.hashSync('student123', 10);
-  const now = new Date().toISOString();
-
-  store.profiles = [
-    { id: 'a0000000-0000-0000-0000-000000000001', email: 'admin@scholargrid.com', password_hash: adminHash, full_name: 'Super Admin User', role: 'superadmin', about: 'Platform administrator', avatar_url: null, points: 0, warnings: 0, is_banned: 0, created_at: now, updated_at: now },
-    { id: 'f0000000-0000-0000-0000-000000000001', email: 'faculty@scholargrid.com', password_hash: facultyHash, full_name: 'Faculty User', role: 'faculty', about: 'Computer Science Professor', avatar_url: null, points: 0, warnings: 0, is_banned: 0, created_at: now, updated_at: now },
-    { id: 's0000000-0000-0000-0000-000000000001', email: 'alice@student.com', password_hash: studentHash, full_name: 'Alice Johnson', role: 'student', about: 'Computer Science major', avatar_url: null, points: 150, warnings: 0, is_banned: 0, created_at: now, updated_at: now },
-    { id: 's0000000-0000-0000-0000-000000000002', email: 'bob@student.com', password_hash: studentHash, full_name: 'Bob Smith', role: 'student', about: 'Mathematics enthusiast', avatar_url: null, points: 230, warnings: 0, is_banned: 0, created_at: now, updated_at: now },
-    { id: 's0000000-0000-0000-0000-000000000003', email: 'carol@student.com', password_hash: studentHash, full_name: 'Carol Williams', role: 'student', about: 'Physics student', avatar_url: null, points: 310, warnings: 0, is_banned: 0, created_at: now, updated_at: now },
-    { id: 's0000000-0000-0000-0000-000000000004', email: 'dave@student.com', password_hash: studentHash, full_name: 'Dave Brown', role: 'student', about: 'Engineering student', avatar_url: null, points: 80, warnings: 0, is_banned: 0, created_at: now, updated_at: now },
-    { id: 's0000000-0000-0000-0000-000000000005', email: 'eve@student.com', password_hash: studentHash, full_name: 'Eve Davis', role: 'student', about: 'Biology researcher', avatar_url: null, points: 420, warnings: 0, is_banned: 0, created_at: now, updated_at: now },
-  ];
-
-  store.groups = [
-    { id: 'g0000000-0000-0000-0000-000000000001', name: 'CS Study Group', description: 'Computer Science discussions and help', join_code: 'GRP-2026-CS1', created_by: 'a0000000-0000-0000-0000-000000000001', created_at: now },
-    { id: 'g0000000-0000-0000-0000-000000000002', name: 'Math Warriors', description: 'Advanced mathematics study group', join_code: 'STD-2026-MTH', created_by: 'a0000000-0000-0000-0000-000000000001', created_at: now },
-    { id: 'g0000000-0000-0000-0000-000000000003', name: 'Physics Lab', description: 'Physics experiments and theory', join_code: 'DSC-2026-PHY', created_by: 'a0000000-0000-0000-0000-000000000001', created_at: now },
-  ];
-
-  store.group_members = [
-    { group_id: 'g0000000-0000-0000-0000-000000000001', user_id: 'a0000000-0000-0000-0000-000000000001', joined_at: now },
-    { group_id: 'g0000000-0000-0000-0000-000000000001', user_id: 's0000000-0000-0000-0000-000000000001', joined_at: now },
-    { group_id: 'g0000000-0000-0000-0000-000000000001', user_id: 's0000000-0000-0000-0000-000000000002', joined_at: now },
-    { group_id: 'g0000000-0000-0000-0000-000000000002', user_id: 's0000000-0000-0000-0000-000000000002', joined_at: now },
-    { group_id: 'g0000000-0000-0000-0000-000000000002', user_id: 's0000000-0000-0000-0000-000000000003', joined_at: now },
-    { group_id: 'g0000000-0000-0000-0000-000000000003', user_id: 's0000000-0000-0000-0000-000000000003', joined_at: now },
-    { group_id: 'g0000000-0000-0000-0000-000000000003', user_id: 's0000000-0000-0000-0000-000000000004', joined_at: now },
-    { group_id: 'g0000000-0000-0000-0000-000000000003', user_id: 's0000000-0000-0000-0000-000000000005', joined_at: now },
-  ];
-
-  store.messages = [
-    { id: uuidv4(), group_id: 'g0000000-0000-0000-0000-000000000001', sender_id: 's0000000-0000-0000-0000-000000000001', content: 'Hey everyone! Ready for the algorithms exam?', file_url: null, file_name: null, file_type: null, created_at: now },
-    { id: uuidv4(), group_id: 'g0000000-0000-0000-0000-000000000001', sender_id: 's0000000-0000-0000-0000-000000000002', content: 'Yes! I uploaded my notes on graph traversal.', file_url: null, file_name: null, file_type: null, created_at: now },
-    { id: uuidv4(), group_id: 'g0000000-0000-0000-0000-000000000002', sender_id: 's0000000-0000-0000-0000-000000000002', content: 'Can someone explain eigenvalues?', file_url: null, file_name: null, file_type: null, created_at: now },
-    { id: uuidv4(), group_id: 'g0000000-0000-0000-0000-000000000002', sender_id: 's0000000-0000-0000-0000-000000000003', content: 'Sure! Think of them as the scaling factors of a matrix transformation.', file_url: null, file_name: null, file_type: null, created_at: now },
-    { id: uuidv4(), group_id: 'g0000000-0000-0000-0000-000000000003', sender_id: 's0000000-0000-0000-0000-000000000004', content: 'Lab report due Friday, anyone started?', file_url: null, file_name: null, file_type: null, created_at: now },
-  ];
-
-  store.notes = [
-    { id: 'n0000000-0000-0000-0000-000000000001', uploader_id: 's0000000-0000-0000-0000-000000000001', title: 'Data Structures Complete Guide', description: 'Comprehensive notes on arrays, trees, graphs, and hash tables', subject: 'Computer Science', file_url: '/uploads/notes/sample-ds.pdf', file_name: 'data-structures.pdf', file_type: 'application/pdf', file_size: 2048000, is_flagged: 0, is_approved: 1, downloads: 45, created_at: now },
-    { id: 'n0000000-0000-0000-0000-000000000002', uploader_id: 's0000000-0000-0000-0000-000000000002', title: 'Linear Algebra Cheat Sheet', description: 'Quick reference for matrices, determinants, and eigenvalues', subject: 'Mathematics', file_url: '/uploads/notes/sample-la.pdf', file_name: 'linear-algebra.pdf', file_type: 'application/pdf', file_size: 1024000, is_flagged: 0, is_approved: 1, downloads: 32, created_at: now },
-    { id: 'n0000000-0000-0000-0000-000000000003', uploader_id: 's0000000-0000-0000-0000-000000000003', title: 'Quantum Mechanics Basics', description: 'Introduction to wave-particle duality and Schrodinger equation', subject: 'Physics', file_url: '/uploads/notes/sample-qm.pdf', file_name: 'quantum-mechanics.pdf', file_type: 'application/pdf', file_size: 3072000, is_flagged: 0, is_approved: 1, downloads: 28, created_at: now },
-    { id: 'n0000000-0000-0000-0000-000000000004', uploader_id: 's0000000-0000-0000-0000-000000000005', title: 'Cell Biology Notes', description: 'Detailed notes on cell structure, organelles, and processes', subject: 'Biology', file_url: '/uploads/notes/sample-bio.pdf', file_name: 'cell-biology.pdf', file_type: 'application/pdf', file_size: 1536000, is_flagged: 0, is_approved: 1, downloads: 19, created_at: now },
-    { id: 'n0000000-0000-0000-0000-000000000005', uploader_id: 's0000000-0000-0000-0000-000000000001', title: 'Algorithm Design Patterns', description: 'Dynamic programming, greedy, divide and conquer patterns', subject: 'Computer Science', file_url: '/uploads/notes/sample-algo.pdf', file_name: 'algorithms.pdf', file_type: 'application/pdf', file_size: 2560000, is_flagged: 0, is_approved: 1, downloads: 55, created_at: now },
-  ];
-
-  store.complaints = [
-    { id: uuidv4(), student_id: 's0000000-0000-0000-0000-000000000001', title: 'Cannot download notes', description: 'Getting a 404 error when trying to download uploaded notes', status: 'open', admin_reply: null, resolved_by: null, created_at: now, updated_at: now },
-    { id: uuidv4(), student_id: 's0000000-0000-0000-0000-000000000004', title: 'Incorrect points calculation', description: 'My points were not updated after uploading 3 notes', status: 'in_progress', admin_reply: null, resolved_by: null, created_at: now, updated_at: now },
-  ];
-
-  store.note_ratings = [];
-  store.leaderboard_points = [];
-  store.faculty_codes = [];
-
-  saveToDisk();
-  console.log('✅ Database seeded successfully!');
+  const { error: membershipError } = await supabase.from('group_members').insert([{ group_id: data.id, user_id: createdBy, joined_at: new Date().toISOString() }]);
+  throwDbError(membershipError);
+  return data;
 }
 
-// ── Initialize ─────────────────────────────────────────────
-function initDb() {
-  const loaded = loadFromDisk();
-  if (!loaded || store.profiles.length === 0) {
-    seed();
+async function deleteGroupById(groupId) {
+  const { data, error } = await supabase.from('groups').delete().eq('id', groupId).select().single();
+  throwDbError(error);
+  return data || null;
+}
+
+async function joinGroup(joinCode, userId) {
+  const { data: group, error: groupError } = await supabase.from('groups').select('*').eq('join_code', joinCode).single();
+  if (groupError) {
+    if (groupError.code === 'PGRST116') return null;
+    throwDbError(groupError);
   }
-  return store;
+
+  const { data: existing, error: membershipError } = await supabase.from('group_members').select('*').eq('group_id', group.id).eq('user_id', userId).maybeSingle();
+  if (membershipError) throwDbError(membershipError);
+  if (existing) return group;
+
+  const { error: insertError } = await supabase.from('group_members').insert([{ group_id: group.id, user_id, joined_at: new Date().toISOString() }]);
+  throwDbError(insertError);
+  return group;
 }
 
-module.exports = { initDb, store, saveToDisk };
+async function getGroupMemberCount(groupId) {
+  const { count, error } = await supabase.from('group_members').select('id', { count: 'exact', head: true }).eq('group_id', groupId);
+  throwDbError(error);
+  return count || 0;
+}
+
+async function getLatestMessageForGroup(groupId) {
+  const { data, error } = await supabase.from('messages').select('*').eq('group_id', groupId).order('created_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) throwDbError(error);
+  return data || null;
+}
+
+async function getLeaderboard(limit = 50) {
+  const { data, error } = await supabase.from('profiles').select('*').eq('role', 'student').eq('is_banned', false).order('points', { ascending: false }).limit(limit);
+  throwDbError(error);
+  return data || [];
+}
+
+async function getLeaderboardHistory(userId) {
+  const { data, error } = await supabase.from('leaderboard_points').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+  throwDbError(error);
+  return data || [];
+}
+
+async function addLeaderboardPoints(studentId, points, reason, referenceId) {
+  const profile = await getProfileById(studentId);
+  if (!profile) return null;
+  await updateProfile(studentId, { points: (profile.points || 0) + points });
+  const { data, error } = await supabase.from('leaderboard_points').insert([{ user_id: studentId, points, reason, reference_id: referenceId || null, created_at: new Date().toISOString() }]).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function getComplaintsForUser(user) {
+  if (['superadmin', 'faculty'].includes(user.role)) {
+    const { data, error } = await supabase.from('complaints').select('*').order('created_at', { ascending: false });
+    throwDbError(error);
+    return data || [];
+  }
+
+  const { data, error } = await supabase.from('complaints').select('*').eq('student_id', user.id).order('created_at', { ascending: false });
+  throwDbError(error);
+  return data || [];
+}
+
+async function createComplaint(studentId, title, description) {
+  const complaint = {
+    student_id: studentId,
+    title,
+    description,
+    status: 'open',
+    admin_reply: null,
+    resolved_by: null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  };
+  const { data, error } = await supabase.from('complaints').insert([complaint]).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function updateComplaint(id, payload) {
+  const updateFields = {
+    updated_at: new Date().toISOString(),
+  };
+  if (payload.status) updateFields.status = payload.status;
+  if (payload.admin_reply !== undefined) updateFields.admin_reply = payload.admin_reply;
+  if (payload.status === 'resolved') updateFields.resolved_by = payload.resolved_by || null;
+  const { data, error } = await supabase.from('complaints').update(updateFields).eq('id', id).select().single();
+  throwDbError(error);
+  return data;
+}
+
+async function getAnalytics() {
+  const [profilesResponse, notesResponse, complaintsResponse, groupsResponse] = await Promise.all([
+    supabase.from('profiles').select('*'),
+    supabase.from('notes').select('*'),
+    supabase.from('complaints').select('*'),
+    supabase.from('groups').select('*'),
+  ]);
+
+  throwDbError(profilesResponse.error);
+  throwDbError(notesResponse.error);
+  throwDbError(complaintsResponse.error);
+  throwDbError(groupsResponse.error);
+
+  const profilesData = profilesResponse.data || [];
+  const notesData = notesResponse.data || [];
+  const complaintsData = complaintsResponse.data || [];
+  const groupsData = groupsResponse.data || [];
+  const now = new Date();
+  const monthlyUploads = [];
+  const monthlyUsers = [];
+
+  for (let i = 11; i >= 0; i -= 1) {
+    const start = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() - i + 1, 1);
+    monthlyUploads.push(notesData.filter((n) => {
+      const d = new Date(n.created_at);
+      return d >= start && d < end;
+    }).length);
+    monthlyUsers.push(profilesData.filter((p) => {
+      const d = new Date(p.created_at);
+      return d >= start && d < end;
+    }).length);
+  }
+
+  const subjectCounts = {};
+  notesData.forEach((n) => {
+    subjectCounts[n.subject] = (subjectCounts[n.subject] || 0) + 1;
+  });
+
+  const topSubjects = Object.entries(subjectCounts)
+    .map(([subject, count]) => ({ subject, count }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  return {
+    totalUsers: profilesData.length,
+    totalNotes: notesData.length,
+    totalDownloads: notesData.reduce((sum, n) => sum + (n.downloads || 0), 0),
+    activeChats: groupsData.length,
+    openComplaints: complaintsData.filter((c) => c.status === 'open').length,
+    resolvedComplaints: complaintsData.filter((c) => c.status === 'resolved').length,
+    monthlyUploads: monthlyUploads.length ? monthlyUploads : Array(12).fill(0),
+    monthlyUsers: monthlyUsers.length ? monthlyUsers : Array(12).fill(0),
+    topSubjects: topSubjects.length ? topSubjects : [{ subject: 'No data', count: 0 }],
+  };
+}
+
+module.exports = {
+  supabase,
+  getProfiles,
+  getStudents,
+  getProfileById,
+  getProfileByEmail,
+  getProfilesByIds,
+  createProfile,
+  updateProfile,
+  incrementWarnings,
+  toggleBan,
+  updateRole,
+  updateAvatar,
+  getFacultyCodes,
+  createFacultyCode,
+  deleteFacultyCode,
+  redeemFacultyCode,
+  getNotes,
+  getNotesByUploaderId,
+  getNoteById,
+  createNote,
+  deleteNoteById,
+  updateNoteById,
+  getNoteRatingsByNoteIds,
+  upsertNoteRating,
+  incrementNoteDownload,
+  getDistinctNoteSubjects,
+  getMessagesByGroup,
+  createMessage,
+  deleteMessageById,
+  getGroupsForUser,
+  createGroup,
+  deleteGroupById,
+  joinGroup,
+  getGroupMemberCount,
+  getLatestMessageForGroup,
+  getLeaderboard,
+  getLeaderboardHistory,
+  addLeaderboardPoints,
+  getComplaintsForUser,
+  createComplaint,
+  updateComplaint,
+  getAnalytics,
+  deleteProfileById,
+};

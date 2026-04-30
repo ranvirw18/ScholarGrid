@@ -6,15 +6,10 @@ const cors = require('cors');
 const WebSocket = require('ws');
 const multer = require('multer');
 const fs = require('fs');
-const { initDb, store, saveToDisk } = require('./db');
+const db = require('./db');
 
 const app = express();
 const server = http.createServer(app);
-
-// ── Initialize Database ────────────────────────────────────
-initDb();
-app.locals.store = store;
-app.locals.saveToDisk = saveToDisk;
 
 // ── Middleware ──────────────────────────────────────────────
 app.use(cors());
@@ -23,7 +18,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // ── Static file serving ────────────────────────────────────
 const uploadsDir = path.join(__dirname, 'public', 'uploads');
-['avatars', 'notes', 'chat'].forEach(dir => {
+['avatars', 'notes', 'chat'].forEach((dir) => {
   const p = path.join(uploadsDir, dir);
   if (!fs.existsSync(p)) fs.mkdirSync(p, { recursive: true });
 });
@@ -37,12 +32,13 @@ const storage = multer.diskStorage({
     else cb(null, path.join(uploadsDir, 'chat'));
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     cb(null, uniqueSuffix + path.extname(file.originalname));
-  }
+  },
 });
 const upload = multer({ storage, limits: { fileSize: 50 * 1024 * 1024 } });
 app.locals.upload = upload;
+app.locals.db = db;
 
 // ── JWT Middleware ──────────────────────────────────────────
 const jwt = require('jsonwebtoken');
@@ -90,7 +86,9 @@ wss.on('connection', (ws) => {
         if (!rooms.has(data.groupId)) rooms.set(data.groupId, new Set());
         rooms.get(data.groupId).add(ws);
       }
-    } catch (e) { console.error('WS parse error:', e); }
+    } catch (e) {
+      console.error('WS parse error:', e);
+    }
   });
   ws.on('close', () => {
     if (ws.groupId && rooms.has(ws.groupId)) {
@@ -128,5 +126,5 @@ const PORT = process.env.PORT || 3001;
 server.listen(PORT, () => {
   console.log(`✅ ScholarGrid API running on http://localhost:${PORT}`);
   console.log(`📡 WebSocket server ready`);
-  console.log(`💾 Using in-memory database (no MySQL/SQLite needed)`);
+  console.log(`💾 Using Supabase as the primary database`);
 });
